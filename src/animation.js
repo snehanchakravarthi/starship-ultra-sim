@@ -259,7 +259,7 @@ export function applyCatch(t, built, P, scratch) {
   return {
     label,
     clock: `T+${t.toFixed(1)} s`,
-    detail: lead ? `${Math.round(lead.y - layout.hCG)} m` : 'all boosters home',
+    detail: lead ? `${Math.round(lead.y - layout.hCG)} m` : caught === layout.n ? 'all boosters home' : 'boosters inbound',
     focus: new THREE.Vector3(0, layout.stackHeight * 0.45, 0),
     states,
   };

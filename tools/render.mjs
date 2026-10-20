@@ -116,11 +116,12 @@ const LIFTOFF = {
   duration: 32,
   title: 'Liftoff',
   shots: [
-    [0, 4.4, (t, u) => {
+    // cut before the steam cloud reaches the pad camera
+    [0, 2.9, (t, u) => {
       const az = phi0 + L.half * 0.5; // between table legs, looking in at the engines
       return { pos: add(mul(dir(az), lerp(72, 58, ease(u))), [0, 5, 0]), target: [0, 16, 0], fov: 46 };
     }],
-    [4.4, 12, (t, u, i) => {
+    [2.9, 12, (t, u, i) => {
       const az = phi0 + L.half * 0.5 + 0.9;
       const f = i.focus;
       return { pos: add(mul(dir(az), 320), [0, 3, 0]), target: [f[0] * 0.6, lerp(h * 0.45, f[1], 0.55), 0], fov: 36 };
