@@ -1,5 +1,10 @@
 # Starship Ultra
 
+<p>
+  <img src="docs/hero.jpg" width="49%" alt="Five stainless boosters around a lattice tower, topped by one wide pointed upper stage, at dusk">
+  <img src="docs/plan.jpg" width="49%" alt="Top-down view: pentagonal tower in the centre, five boosters around it joined by a tie ring">
+</p>
+
 Parametric three.js model of a multi-booster Starship concept:
 
 - **N Super Heavy-class boosters** (default 5) with no upper stages of their own, in a ring
@@ -10,6 +15,8 @@ Parametric three.js model of a multi-booster Starship concept:
   Above a short straight skirt it closes in a **von Kármán nose**.
 - Each tower face carries its own **carriage and pair of catch arms**. Every booster comes home
   to its own face.
+
+![Scale against today's 123 m Starship](docs/scale.jpg)
 
 ## Run
 
@@ -52,6 +59,21 @@ watched with the director camera or a free orbit. Space plays and pauses; Esc ex
 The carriages park low and open during launch, below the bottom tie ring, so nothing on the
 rising stack can hit them. For the catch they ride up to just under the tower top.
 
+## Video export
+
+`tools/render.mjs` renders either animation frame by frame in headless Chromium. Each has its
+own shot list and a telemetry overlay. ffmpeg then encodes a 1080p H.264 MP4 with a synthesized
+engine track (`tools/rumble.py`, driven by the simulation's thrust log).
+
+```sh
+npm i -D playwright && npx playwright install chromium
+node tools/render.mjs catch --out media      # 54 s, five staggered catches
+node tools/render.mjs liftoff --out media    # 32 s, dusk
+node tools/render.mjs stills --out media     # hero, plan, scale, engines, interface
+```
+
+Add `--software` on machines without a GPU. Add `--pick 120,600` to render single frames.
+
 ## Layout
 
 | File | Role |
@@ -63,7 +85,8 @@ rising stack can hit them. For the catch they ride up to just under the tower to
 | `src/vehicle.js` | Assembles everything and derives the readout |
 | `src/effects.js` | Plume shader and smoke particles |
 | `src/animation.js` | Liftoff and catch timelines, director cameras, emitters |
-| `src/main.js` | Scene, theme lighting (day or dusk), panel, playback |
+| `src/main.js` | Scene, theme lighting (day or dusk), panel, playback, capture API |
+| `tools/render.mjs`, `tools/rumble.py` | Video and still export |
 
 Units are metres and the world is Y-up. Booster *k* sits at angle π/N + 2πk/N.
 `window.ultra` exposes the scene, camera and a `skip(seconds)` helper in the browser console.
