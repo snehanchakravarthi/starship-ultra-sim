@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Starship Ultra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="./src/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="viewport" aria-label="3D view of the vehicle on the pad"></div>
+  <div class="views" role="toolbar" aria-label="Camera views">
+    <button type="button" data-view="iso">Iso</button>
+    <button type="button" data-view="side">Side</button>
+    <button type="button" data-view="plan">Plan</button>
+    <button type="button" data-view="under">Interface</button>
+  </div>
+  <p class="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
+  <aside id="panel" aria-label="Design parameters">
+    <header class="panel-head">
+      <div>
+        <h1>Starship Ultra</h1>
+        <p>Multi-booster concept · geometry v0</p>
+      </div>
+      <button type="button" id="panel-toggle" aria-expanded="true" aria-controls="panel-body">Hide</button>
+    </header>
+    <div id="panel-body">
+      <section class="readout" aria-label="Readout">
+        <h2>Readout</h2>
+        <dl id="metrics"></dl>
+        <ul class="checks" id="checks"></ul>
+      </section>
+      <div id="groups"></div>
+      <div class="actions">
+        <button type="button" id="copy">Copy parameters</button>
+        <button type="button" id="reset">Reset</button>
+      </div>
+      <textarea id="export" readonly hidden aria-label="Parameters as JSON"></textarea>
+      <p class="note">Concept geometry for exploration. Not affiliated with SpaceX.</p>
+    </div>
+  </aside>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
