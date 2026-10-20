@@ -39,6 +39,7 @@
 
 html, body { height: 100%; }
 [hidden] { display: none !important; }
+.capture .views, .capture .transport, .capture .hint, .capture #panel { display: none !important; }
 body {
   margin: 0;
   overflow: hidden;

@@ -129,6 +129,7 @@ const smoke = { steam: new THREE.Color(), dust: new THREE.Color(), glow: new THR
 
 let grid = null;
 let ruler = null;
+let rulerOn = true;
 let built = null;
 let params = defaults();
 const scratch = new Float32Array(33);
@@ -228,7 +229,7 @@ function rebuildRuler() {
     s.position.set(refX, refStackHeight + 3, 0);
     ruler.add(s);
   }
-  ruler.visible = anim.mode === 'design';
+  ruler.visible = anim.mode === 'design' && rulerOn;
   scene.add(ruler);
 }
 
@@ -428,7 +429,7 @@ function applyPose() {
   else { applyDesign(built, params); anim.info = null; }
   const design = anim.mode === 'design';
   built.reference.visible = design && params.showReference;
-  if (ruler) ruler.visible = design;
+  if (ruler) ruler.visible = design && rulerOn;
   placeSun(anim.info?.focus);
 }
 
@@ -601,17 +602,24 @@ function resize() {
   renderer.setSize(w, h);
   const panel = $('panel').getBoundingClientRect();
   const view = viewportEl.getBoundingClientRect();
+  const shown = panel.width > 0 && panel.height > 0;
   const dockedRight = panel.left > view.left + w * 0.5;
-  const right = dockedRight ? Math.max(0, view.right - panel.left) : 0;
-  const bottom = dockedRight ? 0 : Math.max(0, view.bottom - panel.top);
+  const right = shown && dockedRight ? Math.max(0, view.right - panel.left) : 0;
+  const bottom = shown && !dockedRight ? Math.max(0, view.bottom - panel.top) : 0;
   camera.aspect = (w + right) / (h + bottom);
   camera.setViewOffset(w + right, h + bottom, right, bottom, w, h);
   camera.updateProjectionMatrix();
   visible.w = Math.max((w - right) / (w + right), 0.2);
   visible.h = Math.max((h - bottom) / (h + bottom), 0.2);
-  particles.material.uniforms.uScale.value =
-    ((h + bottom) * renderer.getPixelRatio()) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+  fullHeight = h + bottom;
+  updateParticleScale();
   requestRender();
+}
+
+let fullHeight = 1;
+function updateParticleScale() {
+  particles.material.uniforms.uScale.value =
+    (fullHeight * renderer.getPixelRatio()) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
 }
 new ResizeObserver(resize).observe(viewportEl);
 new ResizeObserver(resize).observe($('panel'));
@@ -636,6 +644,65 @@ window.ultra = {
   skip(seconds, step = 1 / 30) {
     for (let s = 0; s < seconds; s += step) advance(step);
     syncTransport();
+  },
+  /** Apply parameter overrides and rebuild immediately. */
+  setParams(overrides) {
+    Object.assign(params, sanitize({ ...params, ...overrides }));
+    syncAll();
+    rebuild();
+  },
+  /** Frame-by-frame rendering for video export (tools/render.mjs). */
+  capture: {
+    begin(mode) {
+      document.body.classList.add('capture');
+      rulerOn = false;
+      if (mode) startAnimation(mode);
+      anim.playing = false;
+      setAutoCam(false);
+      renderer.setAnimationLoop(null);
+      resize();
+    },
+    ruler(on) {
+      rulerOn = on;
+      if (ruler) ruler.visible = on && anim.mode === 'design';
+    },
+    step(dt) {
+      advance(dt);
+      plumeTime.value += dt;
+    },
+    /** Camera the in-app director would use right now. */
+    director() {
+      if (anim.mode === 'liftoff') liftoffCamera(anim.t, built, camOut);
+      else catchCamera(anim.t, built, camOut, anim.info.states);
+      const fit = Math.max(1 / visible.h, 1.2 / (camera.aspect * visible.w));
+      const pos = camOut.target.clone().addScaledVector(camOut.position.clone().sub(camOut.target), fit);
+      pos.y = Math.max(pos.y, 5);
+      return { pos: pos.toArray(), target: camOut.target.toArray() };
+    },
+    render(pos, target, fov = camera.fov) {
+      if (fov !== camera.fov) {
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+        updateParticleScale();
+      }
+      camera.position.set(...pos);
+      controls.target.set(...target);
+      camera.lookAt(controls.target);
+      placeSun(anim.info?.focus);
+      sky.position.copy(camera.position);
+      renderer.render(scene, camera);
+    },
+    info() {
+      const i = anim.info;
+      if (!i) return null;
+      return {
+        t: anim.t, clock: i.clock, label: i.label, detail: i.detail, altitude: i.altitude ?? null,
+        focus: i.focus.toArray(),
+        phases: i.states?.map((s) => (s ? s.phase : null)) ?? null,
+        thrust: built.boosters.map((b) => (b.group.visible ? b.thrust : 0)),
+        boosters: built.boosters.map((b) => b.group.getWorldPosition(new THREE.Vector3()).toArray()),
+      };
+    },
   },
 };
 
