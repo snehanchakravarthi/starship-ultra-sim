@@ -3,6 +3,7 @@
 // (increasing angle from +X toward +Z).
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /**
  * Outline of the convex hull of `n` circles of radius `r` whose centres sit on a
@@ -47,16 +48,23 @@ export function roundedPolygonArea(n, apothem, r) {
 }
 
 /**
- * Closed loft through same-length rings stacked at heights `ys`.
- * Flat bottom cap; the top closes to a single tip vertex at `tipY`.
+ * Loft through same-length rings stacked at heights `ys`.
+ * `wrap` closes each ring back to its first point; pass false when the rings
+ * already repeat their first point (a UV seam), and the seam normals are welded.
+ * `uv(i, j)` returns texture coordinates for ring i, point j.
  */
-export function loftGeometry(rings, ys, tipY) {
+export function loftGeometry(rings, ys, { tipY = null, capBottom = false, wrap = true, uv = null } = {}) {
   const n = rings[0].length;
+  const segs = wrap ? n : n - 1;
   const pos = [];
+  const uvs = [];
   const idx = [];
-  rings.forEach((ring, i) => ring.forEach(([x, z]) => pos.push(x, ys[i], z)));
+  rings.forEach((ring, i) => ring.forEach(([x, z], j) => {
+    pos.push(x, ys[i], z);
+    uvs.push(...(uv ? uv(i, j) : [j / n, ys[i]]));
+  }));
   for (let i = 0; i < rings.length - 1; i++) {
-    for (let j = 0; j < n; j++) {
+    for (let j = 0; j < segs; j++) {
       const a = i * n + j;
       const b = i * n + ((j + 1) % n);
       const c = (i + 1) * n + ((j + 1) % n);
@@ -64,54 +72,62 @@ export function loftGeometry(rings, ys, tipY) {
       idx.push(a, c, b, a, d, c);
     }
   }
-  const last = (rings.length - 1) * n;
-  const tip = pos.length / 3;
-  pos.push(0, tipY, 0);
-  for (let j = 0; j < n; j++) idx.push(last + j, tip, last + ((j + 1) % n));
-
-  // bottom cap gets its own vertices so its normals stay flat
-  const base = pos.length / 3;
-  pos.push(0, ys[0], 0);
-  rings[0].forEach(([x, z]) => pos.push(x, ys[0], z));
-  for (let j = 0; j < n; j++) idx.push(base, base + 1 + j, base + 1 + ((j + 1) % n));
-
+  if (tipY != null) {
+    const last = (rings.length - 1) * n;
+    const tip = pos.length / 3;
+    pos.push(0, tipY, 0);
+    uvs.push(uvs[last * 2], tipY);
+    for (let j = 0; j < segs; j++) idx.push(last + j, tip, last + ((j + 1) % n));
+  }
+  if (capBottom) {
+    const base = pos.length / 3;
+    pos.push(0, ys[0], 0);
+    uvs.push(0, 0);
+    rings[0].forEach(([x, z]) => { pos.push(x, ys[0], z); uvs.push(x, z); });
+    for (let j = 0; j < segs; j++) idx.push(base, base + 1 + j, base + 1 + ((j + 1) % n));
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
+  if (!wrap) {
+    const nrm = g.attributes.normal;
+    const v = new THREE.Vector3();
+    for (let i = 0; i < rings.length; i++) {
+      const a = i * n, b = i * n + n - 1;
+      v.set(nrm.getX(a) + nrm.getX(b), nrm.getY(a) + nrm.getY(b), nrm.getZ(a) + nrm.getZ(b)).normalize();
+      nrm.setXYZ(a, v.x, v.y, v.z);
+      nrm.setXYZ(b, v.x, v.y, v.z);
+    }
+  }
   return g;
 }
 
 /**
- * Upper-stage cross-section at height y above its base.
- * Vertical skirt (where the booster tops sit), then a taper whose flat-edge
- * half-width follows a0 · (1 − t^shoulder)^(1/tipBluntness): tangent to the skirt at
- * t = 0, closed at t = 1. Corner radius as a fraction of half-width grows from its
- * base value toward a full circle (tipRounding = 1) along t^roundingCurve.
+ * Haack-series nose radius as a fraction of base radius, t = 0 at the base and
+ * 1 at the tip. C = 0 is the von Kármán ogive (minimum wave drag for a given
+ * length and base area); C = 1/3 is the fuller LV-Haack. Tangent to the base.
+ */
+export function haack(t, C) {
+  const theta = Math.acos(THREE.MathUtils.clamp(2 * t - 1, -1, 1));
+  return Math.sqrt(Math.max(theta - Math.sin(2 * theta) / 2 + C * Math.sin(theta) ** 3, 0) / Math.PI);
+}
+
+/**
+ * Upper-stage cross-section at height y above its base: a straight skirt where
+ * the booster tops sit, then a Haack nose. Corner radius as a fraction of
+ * half-width grows from its base value toward a circle along t^roundingCurve.
  */
 export function upperStageSection(p, y) {
   const { apothem0: a0, corner0: r0, height: H, skirt } = p;
   if (y <= skirt) return { a: a0, r: r0 };
   const t = Math.min((y - skirt) / (H - skirt), 1);
-  const f = Math.pow(Math.max(1 - Math.pow(t, p.shoulder), 0), 1 / p.tipBluntness);
+  const f = haack(t, p.haackC);
   const k0 = r0 / a0;
   const kTop = k0 + p.tipRounding * (1 - k0);
   const k = k0 + (kTop - k0) * Math.pow(t, p.roundingCurve);
   return { a: a0 * f, r: k * a0 * f };
-}
-
-export function upperStageGeometry(p, { rings: ringCount = 72, arcSegs = 12, edgeSegs = 8 } = {}) {
-  const ys = [0];
-  if (p.skirt > 0.01) ys.push(p.skirt);
-  for (let i = 1; i < ringCount; i++) {
-    const t = 1 - Math.pow(1 - i / ringCount, 1.6); // denser toward the tip
-    ys.push(p.skirt + t * (p.height - p.skirt));
-  }
-  const rings = ys.map((y) => {
-    const { a, r } = upperStageSection(p, y);
-    return roundedPolygon(p.n, a, r, { arcSegs, edgeSegs });
-  });
-  return loftGeometry(rings, ys, p.height);
 }
 
 export function upperStageVolume(p, steps = 600) {
@@ -153,7 +169,7 @@ export function latheVolume(profile) {
   return v;
 }
 
-/** Cylinder between two points (used for tie rods and pad legs). */
+/** Cylinder mesh between two points (tie rods, pad legs). */
 export function strut(from, to, radius, material, radialSegs = 8) {
   const dir = new THREE.Vector3().subVectors(to, from);
   const len = dir.length();
@@ -161,6 +177,34 @@ export function strut(from, to, radius, material, radialSegs = 8) {
   mesh.position.copy(from).addScaledVector(dir, 0.5);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
   return mesh;
+}
+
+/** Box geometry spanning a → b with a w × d cross-section (lattice members). */
+export function boxBetween(a, b, w, d = w) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const g = new THREE.BoxGeometry(w, dir.length(), d);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()));
+  g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return g;
+}
+
+export function boxAt(w, h, d, x, y, z) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  g.translate(x, y, z);
+  return g;
+}
+
+/** Merge indexed geometries and free the inputs. */
+export function merge(parts) {
+  const g = mergeGeometries(parts);
+  parts.forEach((p) => p.dispose());
+  return g;
+}
+
+export function scaleUV(g, su, sv) {
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+  return g;
 }
 
 /** Horizontal slab from a 2D outline (with optional holes), top face at y = 0. */
@@ -188,4 +232,9 @@ export function regularPolygon(n, circumradius, phase = 0) {
     pts.push([circumradius * Math.cos(t), circumradius * Math.sin(t)]);
   }
   return pts;
+}
+
+/** Orientation that turns local +X toward world angle phi (around +Y). */
+export function yaw(phi) {
+  return new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -phi);
 }

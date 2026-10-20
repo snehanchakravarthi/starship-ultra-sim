@@ -1,39 +1,38 @@
 // Assembles the multi-booster configuration from parameters and derives the
-// numbers that matter at this stage: sizes, envelope volumes and clearances.
+// numbers that matter at this stage: sizes, volumes, nose drag and clearances.
 
 import * as THREE from 'three';
 import {
-  circle, latheVolume, regularPolygon, roundedPolygon, slabGeometry, strut, tangentOgive,
-  upperStageGeometry, upperStageVolume,
+  latheVolume, roundedPolygonArea, strut, tangentOgive, upperStageVolume, yaw,
 } from './geometry.js';
+import { BOOSTER, boosterKit, makeBooster } from './parts/booster.js';
+import { buildUpperStage } from './parts/upperStage.js';
+import { buildTower } from './parts/tower.js';
+import { buildPad, TABLE } from './parts/pad.js';
 
 // Today's single-stack Starship (V2-class), used for scale and for ratios.
 export const REFERENCE = { diameter: 9, boosterLength: 71, shipBarrel: 39, shipNose: 13 };
 
-const TABLE_MARGIN = 3;   // launch table overhang beyond the upper-stage footprint
-const TABLE_THICKNESS = 3;
 const TIGHT = 3;          // clearances under this many metres are flagged as tight
+const CATCH_LIFT = 3;     // boosters are caught this far above the table, then lowered
 
 export function buildConfiguration(P, M) {
   const n = P.boosterCount;
   const half = Math.PI / n;
-  const rb = P.boosterDiameter / 2;
-  const d = P.clusterRadius;
-  const axes = Array.from({ length: n }, (_, k) => {
-    const phi = half + 2 * half * k; // n = 4 → boosters on the diagonals
-    return new THREE.Vector2(d * Math.cos(phi), d * Math.sin(phi));
-  });
+  const R = P.boosterDiameter / 2;
+  const D = P.clusterRadius;
+  const angles = Array.from({ length: n }, (_, k) => half + 2 * half * k); // n = 4 → diagonals
+  const axes = angles.map((phi) => new THREE.Vector2(D * Math.cos(phi), D * Math.sin(phi)));
 
   // Upper-stage corners are concentric with the booster axes, so each booster
   // top nests inside one rounded corner.
-  const corner0 = rb + P.cornerGap;
-  const apothem0 = d * Math.cos(half) + corner0;
+  const corner0 = R + P.cornerGap;
+  const apothem0 = D * Math.cos(half) + corner0;
   const us = {
     n, apothem0, corner0,
     height: P.upperHeight,
     skirt: Math.min(P.skirtHeight, P.upperHeight - 1),
-    shoulder: P.shoulder,
-    tipBluntness: P.tipBluntness,
+    haackC: P.haackC,
     tipRounding: P.tipRounding,
     roundingCurve: P.roundingCurve,
   };
@@ -42,134 +41,137 @@ export function buildConfiguration(P, M) {
   const boosterTopY = boosterBaseY + P.boosterLength;
   const usBaseY = boosterTopY - P.insetDepth;
   const stackHeight = usBaseY + P.upperHeight;
+  const towerCircumradius = P.towerWidth / 2 / Math.cos(half);
+  const layout = {
+    n, half, D, R, angles, axes, apothem0, corner0, towerCircumradius,
+    boosterBaseY, usBaseY, stackHeight,
+    outerExtent: D + corner0 + TABLE.margin,
+  };
 
-  // ---------- vehicle (moves with the liftoff slider) ----------
+  // ---------- vehicle ----------
   const vehicle = new THREE.Group();
-  vehicle.position.y = P.liftoff;
+  const kit = boosterKit(P);
+  const boosters = angles.map((phi, k) => {
+    const b = makeBooster(kit, M);
+    b.home = { position: new THREE.Vector3(axes[k].x, boosterBaseY, axes[k].y), quaternion: yaw(phi) };
+    b.group.position.copy(b.home.position);
+    b.group.quaternion.copy(b.home.quaternion);
+    vehicle.add(b.group);
+    return b;
+  });
 
-  const boosterGeo = new THREE.CylinderGeometry(rb, rb, P.boosterLength, 48);
-  for (const c of axes) {
-    const m = new THREE.Mesh(boosterGeo, M.steel);
-    m.position.set(c.x, boosterBaseY + P.boosterLength / 2, c.y);
-    shadows(m);
-    vehicle.add(m);
-  }
-
+  const rings = new THREE.Group();
   const rodR = P.rodDiameter / 2;
   const ringYs = [boosterBaseY + P.bottomRingHeight, usBaseY - P.topRingDrop]
     .map((y) => THREE.MathUtils.clamp(y, boosterBaseY + rodR, usBaseY - rodR));
   for (const y of ringYs) {
     if (P.ringStyle === 'arc') {
-      const torus = new THREE.Mesh(new THREE.TorusGeometry(d, rodR, 8, 160), M.rod);
+      const torus = new THREE.Mesh(new THREE.TorusGeometry(D, rodR, 10, 200), M.rod);
       torus.rotation.x = Math.PI / 2;
       torus.position.y = y;
-      vehicle.add(shadows(torus));
+      torus.castShadow = true;
+      rings.add(torus);
       continue;
     }
     for (let k = 0; k < n; k++) {
       const a = axes[k];
       const b = axes[(k + 1) % n];
       const u = new THREE.Vector2().subVectors(b, a);
-      if (u.length() <= 2 * rb) continue; // boosters touch or overlap: nothing to bridge
+      if (u.length() <= 2 * R) continue; // boosters touch or overlap: nothing to bridge
       u.normalize();
-      const from = new THREE.Vector3(a.x + u.x * rb, y, a.y + u.y * rb);
-      const to = new THREE.Vector3(b.x - u.x * rb, y, b.y - u.y * rb);
-      vehicle.add(shadows(strut(from, to, rodR, M.rod)));
+      const rod = strut(new THREE.Vector3(a.x + u.x * R, y, a.y + u.y * R), new THREE.Vector3(b.x - u.x * R, y, b.y - u.y * R), rodR, M.rod, 12);
+      rod.castShadow = true;
+      rings.add(rod);
     }
   }
+  vehicle.add(rings);
 
-  const upper = new THREE.Mesh(upperStageGeometry(us), P.xray ? M.ghost : M.steel);
-  upper.position.y = usBaseY + P.separation;
-  if (!P.xray) shadows(upper);
+  const upperBuilt = buildUpperStage(us, P, M, layout);
+  const upper = upperBuilt.group;
+  upper.userData.homeY = usBaseY;
   vehicle.add(upper);
 
-  // ---------- pad (static) ----------
-  const pad = new THREE.Group();
-  const towerCircumradius = P.towerWidth / 2 / Math.cos(half);
-  // tower faces point at the boosters (room for a catch arm per booster)
-  const towerOutline = regularPolygon(n, towerCircumradius, 2 * half);
-  const tower = new THREE.Mesh(slabGeometry(towerOutline, [], P.towerHeight), M.tower);
-  tower.position.y = P.towerHeight;
-  tower.visible = P.showTower;
-  pad.add(shadows(tower));
+  // ---------- pad and tower ----------
+  const pad = buildPad(P, M, layout);
+  const tower = buildTower(P, M, layout);
+  tower.group.visible = P.showTower;
+  pad.add(tower.group);
 
-  const tableOutline = roundedPolygon(n, apothem0 + TABLE_MARGIN, corner0 + TABLE_MARGIN, { arcSegs: 10, edgeSegs: 2 });
-  const holes = [];
-  const pitch = 2 * d * Math.sin(half);
-  const exhaustR = Math.max(rb - 0.6, 0.5);
-  if (pitch > 2 * exhaustR + 0.5) axes.forEach((c) => holes.push(circle(c.x, c.y, exhaustR)));
-  const towerHoleR = towerCircumradius + 0.4;
-  if (d - exhaustR > towerHoleR + 0.5) holes.push(regularPolygon(n, towerHoleR, 2 * half));
-  const table = new THREE.Mesh(slabGeometry(tableOutline, holes, TABLE_THICKNESS), M.concrete);
-  table.position.y = P.mountHeight;
-  pad.add(shadows(table));
-
-  const legH = P.mountHeight - TABLE_THICKNESS;
-  for (let k = 0; k < n; k++) {
-    const phi = half + 2 * half * k;
-    for (const [ang, r] of [[phi, d + rb + 1.6], [phi + half, apothem0 + 0.5]]) {
-      const x = r * Math.cos(ang), z = r * Math.sin(ang);
-      pad.add(shadows(strut(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, legH, z), 1.1, M.concrete)));
-    }
-  }
+  const yCatch = boosterBaseY + CATCH_LIFT;
+  layout.yCatch = yCatch;
+  layout.catchLift = CATCH_LIFT;
+  layout.hCG = BOOSTER.hCG;
+  layout.carriageCatchY = yCatch + kit.pinH - 0.32 - tower.armTop;
+  layout.carriageParkY = boosterBaseY + 3.5;
 
   // ---------- reference single stack ----------
   const reference = new THREE.Group();
-  const outerExtent = d + corner0 + TABLE_MARGIN;
-  const refX = -(outerExtent + 42);
+  const refX = -(layout.outerExtent + 42);
   reference.position.set(refX, 0, 0);
-  reference.visible = P.showReference;
-  const R = REFERENCE.diameter / 2;
-  const refBooster = new THREE.Mesh(new THREE.CylinderGeometry(R, R, REFERENCE.boosterLength, 40), M.refSteel);
+  const RR = REFERENCE.diameter / 2;
+  const refBooster = new THREE.Mesh(new THREE.CylinderGeometry(RR, RR, REFERENCE.boosterLength, 40), M.refSteel);
   refBooster.position.y = P.mountHeight + REFERENCE.boosterLength / 2;
-  reference.add(shadows(refBooster));
-  const shipProfile = [[R, 0], ...tangentOgive(R, REFERENCE.shipNose).map(([r, y]) => [r, y + REFERENCE.shipBarrel])];
+  reference.add(refBooster);
+  const shipProfile = [[RR, 0], ...tangentOgive(RR, REFERENCE.shipNose).map(([r, y]) => [r, y + REFERENCE.shipBarrel])];
   const ship = new THREE.Mesh(new THREE.LatheGeometry(shipProfile.map(([r, y]) => new THREE.Vector2(Math.max(r, 0.001), y)), 40), M.refSteel);
   ship.position.y = P.mountHeight + REFERENCE.boosterLength;
-  reference.add(shadows(ship));
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(R + 1.2, 1.2, 8, 48), M.concrete);
+  reference.add(ship);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(RR + 1.2, 1.2, 8, 48), M.concrete);
   ring.rotation.x = Math.PI / 2;
   ring.position.y = P.mountHeight - 1.2;
-  reference.add(shadows(ring));
+  reference.add(ring);
   for (let k = 0; k < 6; k++) {
     const t = (k / 6) * Math.PI * 2;
-    const x = (R + 2.4) * Math.cos(t), z = (R + 2.4) * Math.sin(t);
-    reference.add(shadows(strut(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, P.mountHeight - 1.2, z), 0.8, M.concrete)));
+    const x = (RR + 2.4) * Math.cos(t), z = (RR + 2.4) * Math.sin(t);
+    reference.add(strut(new THREE.Vector3(x, 0, z), new THREE.Vector3(x, P.mountHeight - 1.2, z), 0.8, M.concrete));
   }
+  reference.traverse((o) => { o.castShadow = o.receiveShadow = true; });
   const refStackHeight = P.mountHeight + REFERENCE.boosterLength + REFERENCE.shipBarrel + REFERENCE.shipNose;
+  Object.assign(layout, { refX, refStackHeight });
 
   // ---------- numbers ----------
   const usVolume = upperStageVolume(us);
-  const boosterVolume = Math.PI * rb * rb * P.boosterLength;
+  const boosterVolume = Math.PI * R * R * P.boosterLength;
   const refShipVolume = latheVolume(shipProfile);
-  const refBoosterVolume = Math.PI * R * R * REFERENCE.boosterLength;
+  const refBoosterVolume = Math.PI * RR * RR * REFERENCE.boosterLength;
+
+  // Slender-body wave drag of a von Kármán nose: CD ≈ (D/L)² on base area.
+  const baseArea = roundedPolygonArea(n, apothem0, corner0);
+  const dEq = Math.sqrt((4 * baseArea) / Math.PI);
+  const fineness = (us.height - us.skirt) / dEq;
+  const waveIndex = 1 / (fineness * fineness);
+  const refArea = Math.PI * RR * RR;
+  const refIndex = (REFERENCE.diameter / REFERENCE.shipNose) ** 2;
+  const dragPerBooster = (waveIndex * baseArea) / n / (refIndex * refArea);
 
   const rodToTower = P.ringStyle === 'arc'
-    ? d - rodR - towerCircumradius
-    : d * Math.cos(half) - rodR - towerCircumradius; // tower vertices point at rod midpoints
+    ? D - rodR - towerCircumradius
+    : D * Math.cos(half) - rodR - towerCircumradius; // tower vertices point at rod midpoints
   const checks = [
-    status('Booster to tower', d - rb - P.towerWidth / 2),
+    status('Booster to tower', D - R - P.towerWidth / 2),
     status('Tie rods to tower', rodToTower),
-    status('Tower top below upper stage', usBaseY - P.towerHeight),
-    status('Booster to booster', pitch - 2 * rb),
-    status('Booster tops inside straight skirt', us.skirt - P.insetDepth, 0),
+    status('Tower top to upper-stage engines', usBaseY - upperBuilt.engineDropOverTower - P.towerHeight),
+    status('Booster to booster', 2 * D * Math.sin(half) - 2 * R),
+    status('Catch arms under tower top', P.towerHeight - (layout.carriageCatchY + 1.6)),
+    status('Parked arms under bottom ring', ringYs[0] - rodR - (layout.carriageParkY + 1.6)),
+    status('Booster tops inside skirt', us.skirt - P.insetDepth, 0),
   ];
 
   return {
-    vehicle, pad, reference, tower,
-    layout: { refX, refStackHeight, outerExtent, stackHeight, usBaseY },
+    vehicle, pad, reference, tower, boosters, rings, upper, layout,
     metrics: {
       n,
       stackHeight,
       flatWidth: 2 * apothem0,
-      cornerWidth: 2 * (d + corner0),
-      upperHeight: P.upperHeight,
+      cornerWidth: 2 * (D + corner0),
       usVolume,
-      boosterVolume,
       shipMultiple: usVolume / refShipVolume,
       volumeRatio: usVolume / (n * boosterVolume),
       refVolumeRatio: refShipVolume / refBoosterVolume,
-      pitch,
+      fineness,
+      waveIndex,
+      refIndex,
+      dragPerBooster,
       checks,
     },
   };
@@ -177,10 +179,4 @@ export function buildConfiguration(P, M) {
 
 function status(label, value, tight = TIGHT) {
   return { label, value, status: value < 0 ? 'bad' : value < tight ? 'warn' : 'ok' };
-}
-
-function shadows(mesh) {
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
 }

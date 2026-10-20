@@ -24,16 +24,41 @@
     <button type="button" data-view="plan">Plan</button>
     <button type="button" data-view="under">Interface</button>
   </div>
+  <div class="transport" id="transport" role="group" aria-label="Animation playback" hidden>
+    <div class="transport-row">
+      <button type="button" id="play" class="play">Pause</button>
+      <input type="range" id="scrub" min="0" max="1000" step="1" value="0" aria-label="Timeline">
+      <span class="clock" id="clock">T+0.0 s</span>
+    </div>
+    <div class="transport-row">
+      <span class="status" id="status" aria-live="polite"></span>
+      <div class="seg" id="speed" role="radiogroup" aria-label="Playback speed">
+        <button type="button" role="radio" data-speed="0.5">½×</button>
+        <button type="button" role="radio" data-speed="1">1×</button>
+        <button type="button" role="radio" data-speed="2">2×</button>
+        <button type="button" role="radio" data-speed="4">4×</button>
+      </div>
+      <label class="cam" for="autocam"><input type="checkbox" id="autocam" checked> Auto camera</label>
+      <button type="button" id="exit">Exit</button>
+    </div>
+  </div>
   <p class="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
   <aside id="panel" aria-label="Design parameters">
     <header class="panel-head">
       <div>
         <h1>Starship Ultra</h1>
-        <p>Multi-booster concept · geometry v0</p>
+        <p>Multi-booster concept · detail v1</p>
       </div>
       <button type="button" id="panel-toggle" aria-expanded="true" aria-controls="panel-body">Hide</button>
     </header>
     <div id="panel-body">
+      <section class="animate" aria-label="Animations">
+        <h2>Animate</h2>
+        <div class="anim-buttons">
+          <button type="button" id="anim-liftoff">Liftoff</button>
+          <button type="button" id="anim-catch">Booster catch</button>
+        </div>
+      </section>
       <section class="readout" aria-label="Readout">
         <h2>Readout</h2>
         <dl id="metrics"></dl>
