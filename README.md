@@ -35,14 +35,40 @@ to-scale lineup:
 
 The lineup is in `src/lineup.js`.
 
+## Starship V4 vs landmarks
+
+**Live:** https://snehanchakravarthi.github.io/starship-ultra-sim/?view=landmarks
+
+![Starship V4 beside Taipei 101, the Empire State Building, the Eiffel Tower and other landmarks, to scale](docs/landmarks.jpg)
+
+The **V4 vs Landmarks** button (or `?view=landmarks` in the URL) stands a to-scale
+Starship V4 next to well-known structures. The rocket is centred; smaller landmarks
+sit beside it and the giants go on the flanks. The V4 stack (~142 m) is almost the
+same height as the Great Pyramid (138.5 m today, 146.6 m originally).
+
+| Landmark | Height used | Notes |
+| --- | --- | --- |
+| Taipei 101 | 508 m | Official architectural height |
+| Empire State Building | 443 m (tip) | 381 m roof; antenna included |
+| Eiffel Tower | 330 m | Includes the 2022 DAB+ antenna |
+| Statue of Unity | 240 m | 182 m statue on a 58 m base |
+| Starship V4 | ~142 m (estimate) | ~70 m ship on today's ~72 m booster; Elon Musk, 16 Nov 2026 |
+| Great Pyramid of Giza | 138.5 m today | Originally 146.6 m; casing gone |
+| Elizabeth Tower (Big Ben) | 96 m | |
+| Statue of Liberty | 93 m | Ground to tip of torch, including the pedestal |
+| Qutub Minar | 72.5 m | |
+
+The lineup is in `src/landmarks.js`.
+
 ## Run
 
 No build step. Serve the folder and open it in a browser:
 
 ```sh
 python3 -m http.server 8000
-# open http://localhost:8000              (concept)
-# open http://localhost:8000/?view=compare (V3 vs V4 vs Saturn V)
+# open http://localhost:8000                (concept)
+# open http://localhost:8000/?view=compare    (V3 vs V4 vs Saturn V)
+# open http://localhost:8000/?view=landmarks  (V4 vs landmarks)
 ```
 
 Or open it online: https://snehanchakravarthi.github.io/starship-ultra-sim/
@@ -105,6 +131,8 @@ Add `--software` on machines without a GPU. Add `--pick 120,600` to render singl
 | `src/vehicle.js` | Assembles everything and derives the readout |
 | `src/effects.js` | Plume shader and smoke particles |
 | `src/animation.js` | Liftoff and catch timelines, director cameras, emitters |
+| `src/lineup.js` | To-scale V3 / V4 / Saturn V lineup |
+| `src/landmarks.js` | To-scale Starship V4 vs landmarks lineup |
 | `src/main.js` | Scene, theme lighting (day or dusk), panel, playback, capture API |
 | `tools/render.mjs`, `tools/rumble.py` | Video and still export |
 

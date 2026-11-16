@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Starship Ultra · V3 vs V4 vs Saturn V</title>
-<meta name="description" content="Browser Starship sim: parametric multi-booster concept, plus Starship V3 vs V4 vs Saturn V to scale.">
+<title>Starship Ultra · V3 vs V4 vs Saturn V · Landmarks</title>
+<meta name="description" content="Browser Starship sim: parametric multi-booster concept, plus Starship V3 vs V4 vs Saturn V, and Starship V4 vs landmarks, to scale.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -25,6 +25,7 @@
     <button type="button" data-view="plan">Plan</button>
     <button type="button" data-view="under">Interface</button>
     <button type="button" data-view="compare" class="compare-btn" aria-pressed="false" title="Starship V3 vs V4 vs Saturn V, to scale">V3 · V4 · Saturn V</button>
+    <button type="button" data-view="landmarks" class="compare-btn" aria-pressed="false" title="Starship V4 beside well-known landmarks, to scale">V4 vs Landmarks</button>
   </div>
   <div class="transport" id="transport" role="group" aria-label="Animation playback" hidden>
     <div class="transport-row">
@@ -47,6 +48,10 @@
   <div class="compare-card" id="compare-card" hidden>
     <h2>Starship V4 vs V3 vs Saturn V <span>to scale</span></h2>
     <p>V4 numbers: Elon Musk, Nov 16 2026 (ship ~70 m, 9 engines). V4 stack is an estimate: the V4 ship on today's ~72 m booster.</p>
+  </div>
+  <div class="compare-card" id="landmarks-card" hidden>
+    <h2>Starship V4 vs landmarks <span>to scale</span></h2>
+    <p>V4 stack ~142 m is an estimate, from Elon Musk's Nov 16 2026 post (ship ~70 m, 9 engines). Landmark heights are to the tip. The pyramid is 138.5 m today (146.6 m originally). Statue of Unity is a 182 m statue on a 58 m base.</p>
   </div>
   <p class="hint">Drag to orbit · scroll to zoom · right-drag to pan</p>
   <aside id="panel" aria-label="Design parameters">

@@ -68,8 +68,10 @@ button:hover { border-color: var(--accent); }
   top: 12px;
   left: calc(12px + env(safe-area-inset-left, 0px));
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
+  max-width: calc(100% - 24px);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -285,7 +287,7 @@ input[type="range"] { width: 100%; margin: 6px 0 0; accent-color: var(--accent);
   #panel:has(#panel-body[hidden]) { bottom: 0; }
   #panel:has(#panel-body[hidden]) .panel-head { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
   .hint { display: none; }
-  .compare-card { top: 62px; bottom: auto; padding: 8px 12px; }
+  .compare-card { top: 108px; bottom: auto; padding: 8px 12px; }
   .compare-card h2 { font-size: 17px; }
   .compare-card p { font-size: 11.5px; }
   .transport, #app:has(#panel-body[hidden]) .transport {

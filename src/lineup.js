@@ -143,7 +143,7 @@ export function buildLineup(M) {
 
 // ---------------------------------------------------------------- vehicles
 
-function buildStarship(boosterLength, shipLength, M) {
+export function buildStarship(boosterLength, shipLength, M) {
   const g = new THREE.Group();
   const kit = boosterKit({ boosterDiameter: 2 * SHIP_R, boosterLength, catchPinHeight: 60 });
   const b = makeBooster(kit, M);
@@ -281,7 +281,7 @@ const FONTS = {
  * Rounded dark pill with stacked lines of text, drawn to a sprite.
  * Line sizes are in metres of cap-to-descender height; anchor picks the reference point.
  */
-function pill(lines, { x, y, anchor = 'bottom' }) {
+export function pill(lines, { x, y, z = 8, anchor = 'bottom' }) {
   const PX = 24; // canvas pixels per metre
   const pad = 1.4 * PX, gap = 0.6 * PX;
   const measure = document.createElement('canvas').getContext('2d');
@@ -318,6 +318,6 @@ function pill(lines, { x, y, anchor = 'bottom' }) {
   s.scale.set(W / PX, H / PX, 1);
   const centers = { bottom: [0.5, 0], left: [0, 0.5], right: [1, 0.5], 'center-mid': [0.5, 0.5] };
   s.center.set(...centers[anchor]);
-  s.position.set(x, y, 8);
+  s.position.set(x, y, z);
   return s;
 }

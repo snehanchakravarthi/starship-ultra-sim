@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SCHEMA, PARAM_DEFS, defaults, sanitize } from './params.js';
 import { buildConfiguration } from './vehicle.js';
 import { buildLineup, LINEUP_BOUNDS } from './lineup.js';
+import { buildLandmarks, LANDMARKS_BOUNDS } from './landmarks.js';
 import { grainTexture, smokeSprite, steelTextures, tileTexture, ventTexture } from './textures.js';
 import { Particles, plumeTime } from './effects.js';
 import {
@@ -133,7 +134,8 @@ let ruler = null;
 let rulerOn = true;
 let built = null;
 let lineup = null;
-let compare = false;
+let landmarks = null;
+let scaleView = null; // null | 'compare' | 'landmarks'
 let params = defaults();
 const scratch = new Float32Array(33);
 
@@ -174,6 +176,7 @@ function applyTheme() {
   scene.add(grid);
   rebuildRuler();
   rebuildLineup();
+  rebuildLandmarks();
   placeSun();
   requestRender();
 }
@@ -182,11 +185,9 @@ new MutationObserver(applyTheme).observe(root, { attributes: true, attributeFilt
 document.fonts?.ready.then(applyTheme);
 
 function placeSun(focus) {
-  const f = focus ?? (compare
-    ? new THREE.Vector3((LINEUP_BOUNDS.minX + LINEUP_BOUNDS.maxX) / 2, 60, 0)
-    : new THREE.Vector3(0, built ? built.layout.stackHeight * 0.4 : 60, 0));
+  const f = focus ?? scaleFocus();
   sun.target.position.copy(f);
-  sun.position.copy(f).addScaledVector(sunDir, 600);
+  sun.position.copy(f).addScaledVector(sunDir, scaleView === 'landmarks' ? 1400 : 600);
 }
 
 // ---------- height ruler and labels (sprites drawn from theme tokens) ----------
@@ -235,36 +236,70 @@ function rebuildRuler() {
     s.position.set(refX, refStackHeight + 3, 0);
     ruler.add(s);
   }
-  ruler.visible = anim.mode === 'design' && rulerOn && !compare;
+  ruler.visible = anim.mode === 'design' && rulerOn && !scaleView;
   scene.add(ruler);
 }
 
-// ---------- scale lineup: Saturn V, Starship V3, Starship V4 ----------
+// ---------- scale lineups: V3/V4/Saturn V, and V4 vs landmarks ----------
 function rebuildLineup() {
   if (lineup) { scene.remove(lineup); lineup.userData.dispose(); }
   lineup = buildLineup(materials);
-  lineup.visible = compare && anim.mode === 'design';
+  lineup.visible = scaleView === 'compare' && anim.mode === 'design';
   scene.add(lineup);
 }
 
-function setCompare(on) {
-  compare = on;
-  document.getElementById('app').classList.toggle('comparing', on);
-  $('compare-card').hidden = !on;
-  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(on && b.dataset.view === 'compare')));
+function rebuildLandmarks() {
+  if (landmarks) { scene.remove(landmarks); landmarks.userData.dispose(); }
+  landmarks = buildLandmarks(materials);
+  landmarks.visible = scaleView === 'landmarks' && anim.mode === 'design';
+  scene.add(landmarks);
+}
+
+function scaleFocus() {
+  if (scaleView === 'landmarks') return new THREE.Vector3(0, 200, 0);
+  if (scaleView === 'compare') return new THREE.Vector3((LINEUP_BOUNDS.minX + LINEUP_BOUNDS.maxX) / 2, 60, 0);
+  return new THREE.Vector3(0, built ? built.layout.stackHeight * 0.4 : 60, 0);
+}
+
+const SHADOW_DEFAULT = { left: -180, right: 180, top: 180, bottom: -180, near: 10, far: 1200 };
+const SHADOW_LANDMARKS = { left: -520, right: 420, top: 560, bottom: -120, near: 20, far: 2800 };
+
+function setShadowRig(mode) {
+  const box = mode === 'landmarks' ? SHADOW_LANDMARKS : SHADOW_DEFAULT;
+  Object.assign(sun.shadow.camera, box);
+  sun.shadow.camera.updateProjectionMatrix();
+  if (scene.fog) {
+    scene.fog.near = mode === 'landmarks' ? 2000 : 700;
+    scene.fog.far = mode === 'landmarks' ? 10000 : 7000;
+  }
+}
+
+function setScaleView(name) {
+  scaleView = name;
+  document.getElementById('app').classList.toggle('comparing', !!name);
+  $('compare-card').hidden = name !== 'compare';
+  $('landmarks-card').hidden = name !== 'landmarks';
+  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(!!name && b.dataset.view === name)));
   const url = new URL(location.href);
-  if (on) url.searchParams.set('view', 'compare'); else url.searchParams.delete('view');
+  if (name) url.searchParams.set('view', name); else url.searchParams.delete('view');
   history.replaceState(null, '', url);
+  setShadowRig(name);
   if (built) applyPose();
   requestRender();
 }
 
-function frameCompare() {
-  const b = LINEUP_BOUNDS;
-  const target = new THREE.Vector3((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, 0);
+function frameScale(b, targetX) {
+  const midX = targetX ?? (b.minX + b.maxX) / 2;
+  const midY = (b.minY + b.maxY) / 2;
+  const target = new THREE.Vector3(midX, midY, 0);
   const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  const fit = Math.max((b.maxY - b.minY) / (2 * t * visible.h), (b.maxX - b.minX) / (2 * t * camera.aspect * visible.w));
-  camera.position.copy(target).addScaledVector(new THREE.Vector3(0.1, 0.02, 1).normalize(), fit * 1.06);
+  const halfH = Math.max(Math.abs(b.maxY - midY), Math.abs(b.minY - midY));
+  const halfW = Math.max(Math.abs(b.maxX - midX), Math.abs(b.minX - midX));
+  const fit = Math.max(halfH / (t * visible.h), halfW / (t * camera.aspect * visible.w));
+  const dir = scaleView === 'landmarks'
+    ? new THREE.Vector3(0.16, 0.05, 1).normalize()
+    : new THREE.Vector3(0.1, 0.02, 1).normalize();
+  camera.position.copy(target).addScaledVector(dir, fit * (scaleView === 'landmarks' ? 1.08 : 1.06));
   controls.target.copy(target);
   controls.update();
   placeSun();
@@ -441,7 +476,7 @@ $('copy').addEventListener('click', async () => {
 });
 
 $('reset').addEventListener('click', () => {
-  if (compare) setCompare(false);
+  if (scaleView) setScaleView(null);
   params = defaults();
   syncAll();
   rebuild();
@@ -467,16 +502,17 @@ function applyPose() {
   else if (anim.mode === 'catch') anim.info = applyCatch(anim.t, built, params, scratch);
   else { applyDesign(built, params); anim.info = null; }
   const design = anim.mode === 'design';
-  const ultra = !(design && compare);
+  const ultra = !(design && scaleView);
   built.pad.visible = built.vehicle.visible = ultra;
   built.reference.visible = design && params.showReference && ultra;
   if (ruler) ruler.visible = design && rulerOn && ultra;
-  if (lineup) lineup.visible = !ultra;
+  if (lineup) lineup.visible = design && scaleView === 'compare';
+  if (landmarks) landmarks.visible = design && scaleView === 'landmarks';
   placeSun(anim.info?.focus);
 }
 
 function startAnimation(mode) {
-  if (compare) setCompare(false);
+  if (scaleView) setScaleView(null);
   anim.mode = mode;
   anim.t = 0;
   anim.playing = true;
@@ -612,13 +648,14 @@ const VIEWS = {
 const visible = { w: 1, h: 1 };
 
 function frame(name) {
-  if (name === 'compare') {
+  if (name === 'compare' || name === 'landmarks') {
     if (anim.mode !== 'design') stopAnimation();
-    if (!compare) { setCompare(true); setPanelOpen(false); }
-    frameCompare();
+    if (scaleView !== name) { setScaleView(name); setPanelOpen(false); }
+    const b = name === 'compare' ? LINEUP_BOUNDS : LANDMARKS_BOUNDS;
+    frameScale(b, name === 'landmarks' ? 0 : undefined);
     return;
   }
-  if (compare) setCompare(false);
+  if (scaleView) setScaleView(null);
   if (anim.mode !== 'design') setAutoCam(false);
   const { stackHeight, outerExtent, usBaseY } = built.layout;
   const target = new THREE.Vector3(0, stackHeight / 2, 0);
@@ -682,13 +719,15 @@ function start(data) {
   rebuild();
   applyTheme();
   resize();
-  frame(new URLSearchParams(location.search).get('view') === 'compare' ? 'compare' : 'iso');
+  const opening = new URLSearchParams(location.search).get('view');
+  frame(opening === 'compare' || opening === 'landmarks' ? opening : 'iso');
 }
 
 // Handle for poking at the scene from the browser console.
 window.ultra = {
   scene, camera, controls, anim, frame,
-  get compare() { return compare; },
+  get compare() { return scaleView === 'compare'; },
+  get scaleView() { return scaleView; },
   get built() { return built; },
   get params() { return params; },
   /** Run the open animation forward without rendering, e.g. ultra.skip(8). */
@@ -715,7 +754,7 @@ window.ultra = {
     },
     ruler(on) {
       rulerOn = on;
-      if (ruler) ruler.visible = on && anim.mode === 'design' && !compare;
+      if (ruler) ruler.visible = on && anim.mode === 'design' && !scaleView;
     },
     step(dt) {
       advance(dt);
