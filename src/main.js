@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SCHEMA, PARAM_DEFS, defaults, sanitize } from './params.js';
 import { buildConfiguration } from './vehicle.js';
+import { buildLineup, LINEUP_BOUNDS } from './lineup.js';
 import { grainTexture, smokeSprite, steelTextures, tileTexture, ventTexture } from './textures.js';
 import { Particles, plumeTime } from './effects.js';
 import {
@@ -131,6 +132,8 @@ let grid = null;
 let ruler = null;
 let rulerOn = true;
 let built = null;
+let lineup = null;
+let compare = false;
 let params = defaults();
 const scratch = new Float32Array(33);
 
@@ -170,6 +173,7 @@ function applyTheme() {
   grid.position.y = 0.06;
   scene.add(grid);
   rebuildRuler();
+  rebuildLineup();
   placeSun();
   requestRender();
 }
@@ -178,7 +182,9 @@ new MutationObserver(applyTheme).observe(root, { attributes: true, attributeFilt
 document.fonts?.ready.then(applyTheme);
 
 function placeSun(focus) {
-  const f = focus ?? new THREE.Vector3(0, built ? built.layout.stackHeight * 0.4 : 60, 0);
+  const f = focus ?? (compare
+    ? new THREE.Vector3((LINEUP_BOUNDS.minX + LINEUP_BOUNDS.maxX) / 2, 60, 0)
+    : new THREE.Vector3(0, built ? built.layout.stackHeight * 0.4 : 60, 0));
   sun.target.position.copy(f);
   sun.position.copy(f).addScaledVector(sunDir, 600);
 }
@@ -225,12 +231,44 @@ function rebuildRuler() {
     ruler.add(s);
   }
   if (params.showReference) {
-    const s = label(`Starship ${Math.round(refStackHeight - params.mountHeight)} m`, 'center');
+    const s = label(`Starship V3 ${Math.round(refStackHeight - params.mountHeight)} m`, 'center');
     s.position.set(refX, refStackHeight + 3, 0);
     ruler.add(s);
   }
-  ruler.visible = anim.mode === 'design' && rulerOn;
+  ruler.visible = anim.mode === 'design' && rulerOn && !compare;
   scene.add(ruler);
+}
+
+// ---------- scale lineup: Saturn V, Starship V3, Starship V4 ----------
+function rebuildLineup() {
+  if (lineup) { scene.remove(lineup); lineup.userData.dispose(); }
+  lineup = buildLineup(materials);
+  lineup.visible = compare && anim.mode === 'design';
+  scene.add(lineup);
+}
+
+function setCompare(on) {
+  compare = on;
+  document.getElementById('app').classList.toggle('comparing', on);
+  $('compare-card').hidden = !on;
+  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(on && b.dataset.view === 'compare')));
+  const url = new URL(location.href);
+  if (on) url.searchParams.set('view', 'compare'); else url.searchParams.delete('view');
+  history.replaceState(null, '', url);
+  if (built) applyPose();
+  requestRender();
+}
+
+function frameCompare() {
+  const b = LINEUP_BOUNDS;
+  const target = new THREE.Vector3((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, 0);
+  const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const fit = Math.max((b.maxY - b.minY) / (2 * t * visible.h), (b.maxX - b.minX) / (2 * t * camera.aspect * visible.w));
+  camera.position.copy(target).addScaledVector(new THREE.Vector3(0.1, 0.02, 1).normalize(), fit * 1.06);
+  controls.target.copy(target);
+  controls.update();
+  placeSun();
+  requestRender();
 }
 
 function disposeTree(obj) {
@@ -403,6 +441,7 @@ $('copy').addEventListener('click', async () => {
 });
 
 $('reset').addEventListener('click', () => {
+  if (compare) setCompare(false);
   params = defaults();
   syncAll();
   rebuild();
@@ -428,12 +467,16 @@ function applyPose() {
   else if (anim.mode === 'catch') anim.info = applyCatch(anim.t, built, params, scratch);
   else { applyDesign(built, params); anim.info = null; }
   const design = anim.mode === 'design';
-  built.reference.visible = design && params.showReference;
-  if (ruler) ruler.visible = design && rulerOn;
+  const ultra = !(design && compare);
+  built.pad.visible = built.vehicle.visible = ultra;
+  built.reference.visible = design && params.showReference && ultra;
+  if (ruler) ruler.visible = design && rulerOn && ultra;
+  if (lineup) lineup.visible = !ultra;
   placeSun(anim.info?.focus);
 }
 
 function startAnimation(mode) {
+  if (compare) setCompare(false);
   anim.mode = mode;
   anim.t = 0;
   anim.playing = true;
@@ -569,6 +612,13 @@ const VIEWS = {
 const visible = { w: 1, h: 1 };
 
 function frame(name) {
+  if (name === 'compare') {
+    if (anim.mode !== 'design') stopAnimation();
+    if (!compare) { setCompare(true); setPanelOpen(false); }
+    frameCompare();
+    return;
+  }
+  if (compare) setCompare(false);
   if (anim.mode !== 'design') setAutoCam(false);
   const { stackHeight, outerExtent, usBaseY } = built.layout;
   const target = new THREE.Vector3(0, stackHeight / 2, 0);
@@ -632,12 +682,13 @@ function start(data) {
   rebuild();
   applyTheme();
   resize();
-  frame('iso');
+  frame(new URLSearchParams(location.search).get('view') === 'compare' ? 'compare' : 'iso');
 }
 
 // Handle for poking at the scene from the browser console.
 window.ultra = {
   scene, camera, controls, anim, frame,
+  get compare() { return compare; },
   get built() { return built; },
   get params() { return params; },
   /** Run the open animation forward without rendering, e.g. ultra.skip(8). */
@@ -664,7 +715,7 @@ window.ultra = {
     },
     ruler(on) {
       rulerOn = on;
-      if (ruler) ruler.visible = on && anim.mode === 'design';
+      if (ruler) ruler.visible = on && anim.mode === 'design' && !compare;
     },
     step(dt) {
       advance(dt);

@@ -10,8 +10,8 @@ import { buildUpperStage } from './parts/upperStage.js';
 import { buildTower } from './parts/tower.js';
 import { buildPad, TABLE } from './parts/pad.js';
 
-// Today's single-stack Starship (V2-class), used for scale and for ratios.
-export const REFERENCE = { diameter: 9, boosterLength: 71, shipBarrel: 39, shipNose: 13 };
+// Today's single-stack Starship V3 (124 m: ~72 m booster + 52 m ship), used for scale and for ratios.
+export const REFERENCE = { diameter: 9, boosterLength: 72, shipBarrel: 39, shipNose: 13 };
 
 const TIGHT = 3;          // clearances under this many metres are flagged as tight
 const CATCH_LIFT = 3;     // boosters are caught this far above the table, then lowered

@@ -16,7 +16,24 @@ Parametric three.js model of a multi-booster Starship concept:
 - Each tower face carries its own **carriage and pair of catch arms**. Every booster comes home
   to its own face.
 
-![Scale against today's 123 m Starship](docs/scale.jpg)
+![Scale against today's Starship](docs/scale.jpg)
+
+## Starship V3 vs V4 vs Saturn V
+
+**Live:** https://snehanchakravarthi.github.io/starship-ultra-sim/?view=compare
+
+![Starship V3, Starship V4 and Saturn V side by side, to scale](docs/compare.jpg)
+
+The **V3 · V4 · Saturn V** button (or `?view=compare` in the URL) swaps the concept for a
+to-scale lineup:
+
+| Vehicle | Height | Notes |
+| --- | --- | --- |
+| Saturn V | 110.6 m | 10.1 m diameter |
+| Starship V3 | 124 m | 52 m ship on a ~72 m Super Heavy; ship has 3 Raptor + 3 Raptor Vacuum |
+| Starship V4 | ~142 m (estimate) | ~70 m ship, 9 engines (3 more Raptor Vacuum), per Elon Musk on 16 Nov 2026; stack height assumes the same ~72 m booster |
+
+The lineup is in `src/lineup.js`.
 
 ## Run
 
@@ -24,8 +41,11 @@ No build step. Serve the folder and open it in a browser:
 
 ```sh
 python3 -m http.server 8000
-# open http://localhost:8000
+# open http://localhost:8000              (concept)
+# open http://localhost:8000/?view=compare (V3 vs V4 vs Saturn V)
 ```
+
+Or open it online: https://snehanchakravarthi.github.io/starship-ultra-sim/
 
 three.js r160 is loaded from jsDelivr through an import map in `index.html`.
 
